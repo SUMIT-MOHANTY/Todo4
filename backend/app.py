@@ -3,6 +3,7 @@ from flask_cors import CORS
 import json
 import os
 import logging
+import uuid
 from datetime import datetime
 
 # Configure logging
@@ -42,9 +43,7 @@ def save_todos(todos):
 
 def generate_id(todos):
     """Generate a unique ID for a new todo item."""
-    if not todos:
-        return 1
-    return max(todo.get('id', 0) for todo in todos) + 1
+    return str(uuid.uuid4())
 
 # Routes for CRUD operations
 
@@ -63,9 +62,9 @@ def get_todos():
         return jsonify(todos), 200
     except Exception as e:
         logger.error(f"Error retrieving todos: {str(e)}")
-        return jsonify({"error": "Failed to retrieve todos"}), 500
+        return jsonify({"error": f"Failed to retrieve todos: {str(e)}"}), 500
 
-@app.route('/api/todos/<int:todo_id>', methods=['GET'])
+@app.route('/api/todos/<todo_id>', methods=['GET'])
 def get_todo(todo_id):
     """Get a specific todo by ID."""
     try:
@@ -75,10 +74,10 @@ def get_todo(todo_id):
         if todo:
             return jsonify(todo), 200
         else:
-            return jsonify({"error": f"Todo with ID {todo_id} not found"}), 404
+            return jsonify({"error": "Todo not found"}), 404
     except Exception as e:
         logger.error(f"Error retrieving todo {todo_id}: {str(e)}")
-        return jsonify({"error": f"Failed to retrieve todo {todo_id}"}), 500
+        return jsonify({"error": f"Failed to retrieve todo: {str(e)}"}), 500
 
 @app.route('/api/todos', methods=['POST'])
 def create_todo():
@@ -90,11 +89,14 @@ def create_todo():
             return jsonify({"error": "Title is required"}), 400
 
         todos = load_todos()
+        todo_id = generate_id(todos)
         new_todo = {
-            'id': generate_id(todos),
+            'id': todo_id,
             'title': data['title'],
+            'description': data.get('description', ''),
             'completed': data.get('completed', False),
-            'createdAt': datetime.now().isoformat()
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
         }
 
         todos.append(new_todo)
@@ -105,26 +107,37 @@ def create_todo():
             return jsonify({"error": "Failed to save todo"}), 500
     except Exception as e:
         logger.error(f"Error creating todo: {str(e)}")
-        return jsonify({"error": "Failed to create todo"}), 500
+        return jsonify({"error": f"Failed to create todo: {str(e)}"}), 500
 
-@app.route('/api/todos/<int:todo_id>', methods=['PUT'])
+@app.route('/api/todos/<todo_id>', methods=['PUT'])
 def update_todo(todo_id):
     """Update an existing todo item."""
     try:
         data = request.get_json()
         if not data:
-            return jsonify({"error": "No data provided"}), 400
+            return jsonify({"error": "No update data provided"}), 400
 
         todos = load_todos()
         todo_index = next((i for i, t in enumerate(todos) if t.get('id') == todo_id), None)
 
         if todo_index is None:
-            return jsonify({"error": f"Todo with ID {todo_id} not found"}), 404
+            return jsonify({"error": "Todo not found"}), 404
 
         # Update the todo while preserving fields that aren't being changed
         current_todo = todos[todo_index]
-        updated_todo = {**current_todo, **data}
-        updated_todo['id'] = todo_id  # Ensure ID remains the same
+        updated_todo = {**current_todo}
+        
+        # Update fields that are provided
+        if 'title' in data:
+            updated_todo['title'] = data['title']
+        if 'description' in data:
+            updated_todo['description'] = data['description']
+        if 'completed' in data:
+            updated_todo['completed'] = data['completed']
+            
+        # Update the updated_at timestamp
+        updated_todo['updated_at'] = datetime.now().isoformat()
+        
         todos[todo_index] = updated_todo
 
         if save_todos(todos):
@@ -133,9 +146,9 @@ def update_todo(todo_id):
             return jsonify({"error": "Failed to update todo"}), 500
     except Exception as e:
         logger.error(f"Error updating todo {todo_id}: {str(e)}")
-        return jsonify({"error": f"Failed to update todo {todo_id}"}), 500
+        return jsonify({"error": f"Failed to update todo: {str(e)}"}), 500
 
-@app.route('/api/todos/<int:todo_id>', methods=['DELETE'])
+@app.route('/api/todos/<todo_id>', methods=['DELETE'])
 def delete_todo(todo_id):
     """Delete a todo item by ID."""
     try:
@@ -143,17 +156,17 @@ def delete_todo(todo_id):
         todo_index = next((i for i, t in enumerate(todos) if t.get('id') == todo_id), None)
 
         if todo_index is None:
-            return jsonify({"error": f"Todo with ID {todo_id} not found"}), 404
+            return jsonify({"error": "Todo not found"}), 404
 
         deleted_todo = todos.pop(todo_index)
 
         if save_todos(todos):
-            return jsonify({"message": f"Todo {todo_id} deleted successfully", "deleted": deleted_todo}), 200
+            return jsonify({"message": "Todo deleted successfully", "deleted": deleted_todo}), 200
         else:
             return jsonify({"error": "Failed to save changes after deletion"}), 500
     except Exception as e:
         logger.error(f"Error deleting todo {todo_id}: {str(e)}")
-        return jsonify({"error": f"Failed to delete todo {todo_id}"}), 500
+        return jsonify({"error": f"Failed to delete todo: {str(e)}"}), 500
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
