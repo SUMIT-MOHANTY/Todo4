@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "title": "Learn Flask REST API",
+    "completed": false,
+    "createdAt": "2023-01-01T12:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "title": "Build a Todo App",
+    "completed": false,
+    "createdAt": "2023-01-02T12:00:00.000Z"
+  }
+]
