@@ -1,80 +1,72 @@
-import { useState, useEffect } from 'react';
-import { Todo, fetchTodos, createTodo, updateTodo, deleteTodo } from '../services/todoApi';
+import { useState, useEffect, useCallback } from 'react';
+import { todoApi, ITodo } from '../services/todoApi';
 
 export const useTodos = () => {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [todos, setTodos] = useState<ITodo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch all todos
-  useEffect(() => {
-    const loadTodos = async () => {
-      setLoading(true);
-      try {
-        const data = await fetchTodos();
-        setTodos(data);
-        setError(null);
-      } catch (err) {
-        setError('Failed to load todos. Please try again later.');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadTodos();
+  const fetchTodos = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await todoApi.getAll();
+      setTodos(data);
+    } catch (err) {
+      setError('Failed to load todos. Please refresh and try again.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   // Add a new todo
-  const addTodo = async (title: string) => {
+  const addTodo = useCallback(async (title: string) => {
     try {
-      const newTodo = await createTodo(title);
-      if (newTodo) {
-        setTodos(prev => [...prev, newTodo]);
-      }
-      return true;
+      const newTodo = await todoApi.create(title);
+      setTodos(prev => [...prev, newTodo]);
     } catch (err) {
-      setError('Failed to add todo. Please try again.');
-      console.error(err);
-      return false;
+      throw err; // Let the component handle the error
     }
-  };
+  }, []);
 
-  // Toggle todo completion
-  const toggleTodo = async (id: number) => {
-    const todo = todos.find(t => t.id === id);
-    if (!todo) return;
-
+  // Toggle todo completed status
+  const toggleTodo = useCallback(async (id: number) => {
     try {
-      const updated = await updateTodo(id, { completed: !todo.completed });
-      if (updated) {
-        setTodos(todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
-      }
+      const updatedTodo = await todoApi.toggle(id);
+      setTodos(prev => prev.map(todo =>
+        todo.id === id ? updatedTodo : todo
+      ));
     } catch (err) {
+      console.error(err);
       setError('Failed to update todo. Please try again.');
-      console.error(err);
     }
-  };
+  }, []);
 
   // Delete a todo
-  const removeTodo = async (id: number) => {
+  const deleteTodo = useCallback(async (id: number) => {
     try {
-      const success = await deleteTodo(id);
-      if (success) {
-        setTodos(todos.filter(t => t.id !== id));
-      }
+      await todoApi.delete(id);
+      setTodos(prev => prev.filter(todo => todo.id !== id));
     } catch (err) {
-      setError('Failed to delete todo. Please try again.');
       console.error(err);
+      setError('Failed to delete todo. Please try again.');
     }
-  };
+  }, []);
+
+  // Load todos on component mount
+  useEffect(() => {
+    fetchTodos();
+  }, [fetchTodos]);
 
   return {
     todos,
-    loading,
+    isLoading,
     error,
     addTodo,
     toggleTodo,
-    removeTodo
+    deleteTodo,
+    refreshTodos: fetchTodos
   };
 };

@@ -1,36 +1,49 @@
 import React, { useState } from 'react';
 
 interface AddTodoProps {
-  onAdd: (title: string) => void;
+  onAddTodo: (title: string) => Promise<void>;
 }
 
-const AddTodo: React.FC<AddTodoProps> = ({ onAdd }) => {
+const AddTodo: React.FC<AddTodoProps> = ({ onAddTodo }) => {
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validation
     if (!title.trim()) {
       setError('Todo title cannot be empty');
       return;
     }
 
-    onAdd(title);
-    setTitle('');
-    setError(null);
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      await onAddTodo(title);
+      setTitle(''); // Reset form after successful submission
+    } catch (err) {
+      setError('Failed to add todo. Please try again.');
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="add-todo-form">
+    <form className="add-todo-form" onSubmit={handleSubmit}>
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Add a new todo"
+        placeholder="What needs to be done?"
+        disabled={isSubmitting}
       />
-      <button type="submit">Add</button>
-      {error && <div className="error">{error}</div>}
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Adding...' : 'Add Todo'}
+      </button>
+      {error && <div className="error-message">{error}</div>}
     </form>
   );
 };

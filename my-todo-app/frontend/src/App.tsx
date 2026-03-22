@@ -4,24 +4,39 @@ import AddTodo from './components/AddTodo';
 import { useTodos } from './hooks/useTodos';
 import './styles.css';
 
-const App: React.FC = () => {
-  const { todos, loading, error, addTodo, toggleTodo, removeTodo } = useTodos();
-
-  if (loading) {
-    return <div className="loading">Loading todos...</div>;
-  }
-
-  if (error) {
-    return <div className="error">{error}</div>;
-  }
+function App() {
+  const {
+    todos,
+    isLoading,
+    error,
+    addTodo,
+    toggleTodo,
+    deleteTodo
+  } = useTodos();
 
   return (
     <div className="app">
-      <h1>Todo App</h1>
-      <AddTodo onAdd={addTodo} />
-      <TodoList todos={todos} onToggle={toggleTodo} onDelete={removeTodo} />
+      <header>
+        <h1>Todo App</h1>
+      </header>
+
+      <main>
+        <AddTodo onAddTodo={addTodo} />
+
+        <TodoList
+          todos={todos}
+          onToggleComplete={toggleTodo}
+          onDeleteTodo={deleteTodo}
+          isLoading={isLoading}
+          error={error}
+        />
+      </main>
+
+      <footer>
+        <p>React TypeScript Todo App</p>
+      </footer>
     </div>
   );
-};
+}
 
 export default App;

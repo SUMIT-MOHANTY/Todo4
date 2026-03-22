@@ -1,31 +1,33 @@
-version: '3'
+version: '3.8'
 
 services:
   frontend:
-    image: node:18-alpine
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
-    command: sh -c "npm install && npm run dev"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     environment:
       - NODE_ENV=development
-      - VITE_API_URL=http://localhost:5000/api
     depends_on:
       - backend
 
   backend:
-    image: python:3.11-slim
-    working_dir: /app
-    volumes:
-      - ./backend:/app
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "5000:5000"
-    command: sh -c "pip install -r requirements.txt && python app.py"
+    volumes:
+      - ./backend:/app
     environment:
+      - FLASK_APP=app.py
       - FLASK_ENV=development
       - DATABASE_URL=sqlite:///todos.db
+    command: flask run --host=0.0.0.0
 
 networks:
   default:
