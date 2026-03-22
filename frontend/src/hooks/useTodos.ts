@@ -1,124 +1,158 @@
-import { useState, useEffect } from 'react';
-import { Todo } from '../types';
+import { useState, useEffect, useCallback } from 'react';
+import { Todo, TodoInput, TodoUpdateInput } from '../types/todo';
+import { secureFetch, sanitizeInput, validateTodoText } from '../utils/api';
 
-// This would normally come from an environment variable or configuration
-const API_URL = '/api/todos';
+// Define API endpoints - avoid hardcoding across components
+const API_ENDPOINTS = {
+  TODOS: '/api/todos',
+  TODO: (id: string) => `/api/todos/${id}`,
+};
 
-export const useTodos = () => {
+// Custom hook for managing todos with security features
+export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch todos on initial load
-  useEffect(() => {
-    const fetchTodos = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(API_URL);
+  // Load todos with security measures
+  const fetchTodos = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch todos: ${response.status}`);
-        }
+    try {
+      const response = await secureFetch<Todo[]>(API_ENDPOINTS.TODOS);
 
-        const data = await response.json();
-        setTodos(data);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching todos:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load todos');
-      } finally {
-        setLoading(false);
+      if (response.status === 'error') {
+        setError(response.error || 'Failed to fetch todos');
+      } else if (response.data) {
+        setTodos(response.data);
       }
-    };
-
-    fetchTodos();
+    } catch (err) {
+      setError('An unexpected error occurred');
+      console.error('Failed to fetch todos:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Add a new todo
-  const addTodo = async (title: string) => {
+  // Load todos on component mount
+  useEffect(() => {
+    fetchTodos();
+  }, [fetchTodos]);
+
+  // Add todo with input validation and sanitization
+  const addTodo = useCallback(async (input: TodoInput): Promise<{ success: boolean; error?: string }> => {
+    // Validate and sanitize input
+    const validation = validateTodoText(input.text);
+    if (!validation.valid) {
+      return { success: false, error: validation.error };
+    }
+
+    const sanitizedText = sanitizeInput(input.text);
+
     try {
-      setError(null);
-      const response = await fetch(API_URL, {
+      const response = await secureFetch<Todo>(API_ENDPOINTS.TODOS, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title, completed: false }),
+        body: JSON.stringify({ ...input, text: sanitizedText }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to add todo: ${response.status}`);
+      if (response.status === 'error') {
+        return { success: false, error: response.error };
       }
 
-      const newTodo = await response.json();
-      setTodos(prevTodos => [...prevTodos, newTodo]);
+      if (response.data) {
+        setTodos(prev => [...prev, response.data!]);
+        return { success: true };
+      }
+
+      return { success: false, error: 'Failed to add todo' };
     } catch (err) {
-      console.error('Error adding todo:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add todo');
+      console.error('Failed to add todo:', err);
+      return { success: false, error: 'An unexpected error occurred' };
     }
-  };
+  }, []);
 
   // Toggle todo completion status
-  const toggleTodo = async (id: number) => {
+  const toggleTodo = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      setError(null);
       const todoToUpdate = todos.find(todo => todo.id === id);
 
       if (!todoToUpdate) {
-        throw new Error(`Todo with id ${id} not found`);
+        return { success: false, error: `Todo with id ${id} not found` };
       }
 
-      const response = await fetch(`${API_URL}/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ completed: !todoToUpdate.completed }),
+      return await updateTodo({
+        id,
+        completed: !todoToUpdate.completed
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to update todo: ${response.status}`);
-      }
-
-      const updatedTodo = await response.json();
-
-      setTodos(prevTodos =>
-        prevTodos.map(todo =>
-          todo.id === id ? updatedTodo : todo
-        )
-      );
     } catch (err) {
       console.error('Error toggling todo:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update todo');
+      return { success: false, error: 'An unexpected error occurred' };
     }
-  };
+  }, [todos]);
 
-  // Delete a todo
-  const deleteTodo = async (id: number) => {
+  // Update todo with validation
+  const updateTodo = useCallback(async (input: TodoUpdateInput): Promise<{ success: boolean; error?: string }> => {
+    // Validate text if provided
+    if (input.text !== undefined) {
+      const validation = validateTodoText(input.text);
+      if (!validation.valid) {
+        return { success: false, error: validation.error };
+      }
+      input.text = sanitizeInput(input.text);
+    }
+
     try {
-      setError(null);
-      const response = await fetch(`${API_URL}/${id}`, {
+      const response = await secureFetch<Todo>(API_ENDPOINTS.TODO(input.id), {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      });
+
+      if (response.status === 'error') {
+        return { success: false, error: response.error };
+      }
+
+      if (response.data) {
+        setTodos(prev => prev.map(todo =>
+          todo.id === input.id ? response.data! : todo
+        ));
+        return { success: true };
+      }
+
+      return { success: false, error: 'Failed to update todo' };
+    } catch (err) {
+      console.error('Failed to update todo:', err);
+      return { success: false, error: 'An unexpected error occurred' };
+    }
+  }, []);
+
+  // Delete todo with proper confirmation and error handling
+  const deleteTodo = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await secureFetch(API_ENDPOINTS.TODO(id), {
         method: 'DELETE',
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to delete todo: ${response.status}`);
+      if (response.status === 'error') {
+        return { success: false, error: response.error };
       }
 
-      // Remove the todo from state
-      setTodos(prevTodos => prevTodos.filter(todo => todo.id !== id));
+      setTodos(prev => prev.filter(todo => todo.id !== id));
+      return { success: true };
     } catch (err) {
-      console.error('Error deleting todo:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete todo');
+      console.error('Failed to delete todo:', err);
+      return { success: false, error: 'An unexpected error occurred' };
     }
-  };
+  }, []);
 
   return {
     todos,
-    addTodo,
-    toggleTodo,
-    deleteTodo,
     loading,
     error,
+    fetchTodos,
+    addTodo,
+    updateTodo,
+    toggleTodo,
+    deleteTodo,
   };
-};
+}

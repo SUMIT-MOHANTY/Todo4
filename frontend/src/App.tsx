@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
+import { ThemeProvider } from './context/ThemeContext';
 
 // Import components
 import Header from './components/Header';
@@ -17,6 +18,9 @@ import InvoiceDetail from './components/InvoiceDetail';
 import Login from './components/Login';
 import Register from './components/Register';
 import NotFound from './components/NotFound';
+import ErrorBoundary from './components/common/ErrorBoundary';
+import LoadingSpinner from './components/common/LoadingSpinner';
+import Footer from './components/layout/Footer';
 
 // Import styles
 import './styles.css';
@@ -39,6 +43,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [appInitialized, setAppInitialized] = useState<boolean>(false);
 
   useEffect(() => {
     // Check if user is authenticated on app load
@@ -52,7 +57,24 @@ const App: React.FC = () => {
       setIsAuthenticated(true);
     }
 
-    setIsLoading(false);
+    setTimeout(() => {
+      setIsLoading(false);
+      setAppInitialized(true);
+    }, 300);
+
+    // Security: Add event listener for storage changes to detect token changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'token' && e.newValue === null) {
+        // Token was removed in another tab/window, log out this instance too
+        logout();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const login = (token: string, userData: any) => {
@@ -76,51 +98,54 @@ const App: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <p>Loading...</p>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout }}>
-      <Router>
-        <div className="app">
-          {isAuthenticated ? (
-            <>
-              <Header toggleSidebar={toggleSidebar} user={user} logout={logout} />
-              <div className="main-container">
-                <Sidebar isOpen={sidebarOpen} />
-                <main className={`content ${sidebarOpen ? '' : 'expanded'}`}>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <AuthContext.Provider value={{ isAuthenticated, user, login, logout }}>
+          <Router>
+            <div className="app">
+              {isAuthenticated ? (
+                <>
+                  <Header toggleSidebar={toggleSidebar} user={user} logout={logout} />
+                  <div className="main-container">
+                    <Sidebar isOpen={sidebarOpen} />
+                    <main className={`content ${sidebarOpen ? '' : 'expanded'}`}>
+                      {appInitialized && (
+                        <Routes>
+                          <Route path="/" element={<Dashboard />} />
+                          <Route path="/dashboard" element={<Dashboard />} />
+                          <Route path="/clients" element={<ClientList />} />
+                          <Route path="/clients/:id" element={<ClientDetail />} />
+                          <Route path="/projects" element={<ProjectList />} />
+                          <Route path="/projects/:id" element={<ProjectDetail />} />
+                          <Route path="/tasks" element={<TaskList />} />
+                          <Route path="/tasks/:id" element={<TaskDetail />} />
+                          <Route path="/invoices" element={<InvoiceList />} />
+                          <Route path="/invoices/:id" element={<InvoiceDetail />} />
+                          <Route path="*" element={<NotFound />} />
+                        </Routes>
+                      )}
+                    </main>
+                  </div>
+                  <Footer />
+                </>
+              ) : (
+                <div className="auth-container">
                   <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/clients" element={<ClientList />} />
-                    <Route path="/clients/:id" element={<ClientDetail />} />
-                    <Route path="/projects" element={<ProjectList />} />
-                    <Route path="/projects/:id" element={<ProjectDetail />} />
-                    <Route path="/tasks" element={<TaskList />} />
-                    <Route path="/tasks/:id" element={<TaskDetail />} />
-                    <Route path="/invoices" element={<InvoiceList />} />
-                    <Route path="/invoices/:id" element={<InvoiceDetail />} />
-                    <Route path="*" element={<NotFound />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/register" element={<Register />} />
+                    <Route path="*" element={<Navigate to="/login" replace />} />
                   </Routes>
-                </main>
-              </div>
-            </>
-          ) : (
-            <div className="auth-container">
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="*" element={<Navigate to="/login" replace />} />
-              </Routes>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </Router>
-    </AuthContext.Provider>
+          </Router>
+        </AuthContext.Provider>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 };
 
